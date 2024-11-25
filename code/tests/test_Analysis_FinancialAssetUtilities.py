@@ -12,6 +12,7 @@ import pandas as pd
 from my_package.analysis import FinancialAssetUtilities, DescriptiveStats
 from my_package.exceptions import FinancialAssetError
 
+# Tests for FinancialAssetUtilities.calculate_return
 class TestCalculateReturn(unittest.TestCase):
     
     # Tests for numeric inputs
@@ -105,6 +106,8 @@ class TestCalculateCumulativePerf(unittest.TestCase):
         for i, expected in enumerate(expected_cumulative_return):
             if pd.notna(expected):
                 self.assertAlmostEqual(result_df['cumulative_return'].iloc[i], expected, delta=0.01)
+                
+    
 
     def test_cumulative_perf_missing_price_column(self):
         dates = pd.date_range(start="2024-11-01", periods=5, freq="D")
@@ -137,3 +140,71 @@ class TestCalculateCumulativePerf(unittest.TestCase):
         
         result_df = DescriptiveStats.calculate_cumulative_perf(df)
         self.assertIn('cumulative_return', result_df.columns)
+
+# Tests for DescriptiveStats.calculate_annualized_perf
+class TestCalculateAnnualizedPerf(unittest.TestCase):
+    
+    def test_geo_perf_with_prices_daily(self):
+        # Test with daily prices, geometric return
+        series = pd.Series([100.0, 105.0, 110.0, 120.0])
+        annualized_ret = DescriptiveStats.calculate_annualized_perf(series, freq='d', prc_or_ret='prc', geo_or_arith='geo')
+        expected_ret = ((120 / 100) ** (252 / 3) - 1)
+        self.assertAlmostEqual(annualized_ret, expected_ret, delta=0.001)
+
+    def test_arith_perf_with_prices_monthly(self):
+        # Test with monthly prices, arithmetic return
+        series = pd.Series([100.0, 105.0, 110.0, 120.0])
+        annualized_ret = DescriptiveStats.calculate_annualized_perf(series, freq='m', prc_or_ret='prc', geo_or_arith='arith')
+        expected_ret = ((120 / 100 - 1) * (12 / 3))
+        self.assertAlmostEqual(annualized_ret, expected_ret, delta=0.001)
+
+    def test_geo_perf_with_returns_daily(self):
+        # Test with simple daily returns
+        series = pd.Series([0.05, 0.047619, 0.090909])
+        annualized_ret = DescriptiveStats.calculate_annualized_perf(series, freq='d', prc_or_ret='ret', ret_log=False)
+        expected_ret = ((1 + series).prod() ** (252 / 3) - 1)
+        self.assertAlmostEqual(annualized_ret, expected_ret, delta=0.001)
+
+    def test_geo_perf_with_log_returns_daily(self):
+        # Test with daily log-ret 
+        series = pd.Series([np.log(1.05), np.log(1.047619), np.log(1.090909)])
+        annualized_ret = DescriptiveStats.calculate_annualized_perf(series, freq='d', prc_or_ret='ret', ret_log=True)
+        mean_log_ret = series.mean()
+        expected_ret = np.exp(mean_log_ret * 252) - 1
+        self.assertAlmostEqual(annualized_ret, expected_ret, delta=0.001)
+
+    def test_error_on_nan_values(self):
+        # Test with NaN values
+        series = pd.Series([100.0, np.nan, 110.0])
+        with self.assertRaises(ValueError):
+            DescriptiveStats.calculate_annualized_perf(series, freq='d', prc_or_ret='prc')
+
+    def test_error_on_invalid_frequency(self):
+        # Test with an invalid frequency
+        series = pd.Series([100.0, 105.0, 110.0])
+        with self.assertRaises(ValueError):
+            DescriptiveStats.calculate_annualized_perf(series, freq='h', prc_or_ret='prc')
+
+    def test_error_on_invalid_prc_or_ret(self):
+        # Test with argument 'prc_or_ret' invalid
+        series = pd.Series([100.0, 105.0, 110.0])
+        with self.assertRaises(ValueError):
+            DescriptiveStats.calculate_annualized_perf(series, freq='d', prc_or_ret='invalid')
+
+    def test_error_on_zero_start_price(self):
+        # Test with a zero initial price
+        series = pd.Series([0.0, 105.0, 110.0])
+        with self.assertRaises(ZeroDivisionError):
+            DescriptiveStats.calculate_annualized_perf(series, freq='d', prc_or_ret='prc')
+
+    def test_error_on_non_numeric_series(self):
+        # Test with a non numeric serie
+        series = pd.Series(['100', '105', '110'])
+        with self.assertRaises(FinancialAssetError.IncorrectInputType):
+            DescriptiveStats.calculate_annualized_perf(series, freq='d', prc_or_ret='prc')
+
+    def test_error_on_insufficient_data(self):
+        # Test for a series with less than two data points
+        series = pd.Series([100.0])
+        with self.assertRaises(FinancialAssetError.NotEnoughData):
+            DescriptiveStats.calculate_annualized_perf(series, freq='d', prc_or_ret='prc')
