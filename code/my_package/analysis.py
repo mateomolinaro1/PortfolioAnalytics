@@ -174,6 +174,8 @@ class FinancialAssetUtilities:
            
 class DescriptiveStats:
     @staticmethod
+    # Need to handle the case if we have log returns
+    # Need to handle the case where we want to compute cum perf for several columns in the df
     def calculate_cumulative_perf(df: pd.DataFrame) -> pd.DataFrame:
         """
         Calculate the cumulative performance based on returns or prices provided.
@@ -207,6 +209,10 @@ class DescriptiveStats:
         if df.shape[1] < 2:
             raise ValueError("DataFrame must have at least two columns, including 'price' or 'return'.")
         
+        # # Input check: freq must be a string
+        # if not isinstance(log_ret, bool):
+        #     raise FinancialAssetError.IncorrectInputType(input_type=type(log_ret), required_type=bool)
+            
         # If 'price' column is missing, check if 'return' exists
         if 'price' not in df.columns:
             if 'return' not in df.columns:
@@ -237,7 +243,94 @@ class DescriptiveStats:
             df['cumulative_return'] = cumulative_return
         
         return df
+    
+    # Need to handle the case where we want to compute annualized perf on several columns of a df
+    def calculate_annualized_perf(series: pd.Series, freq: str = 'd', prc_or_ret: str = 'prc', geo_or_arith: str = 'geo',
+                                  ret_log: bool = False) -> float:
+        """
+        Calculate annualized performance based on a series of prices or returns.
+    
+        Parameters
+        ----------
+        series : pd.Series
+            Series of prices or returns.
+        freq : str
+            Frequency of data ('d' for daily, 'w' for weekly, 'm' for monthly, 'y' for yearly).
+        prc_or_ret : str
+            Indicates if the input is prices ('prc') or returns ('ret').
+        geo_or_arith : str
+            For prices, calculate geometric ('geo') or arithmetic ('arith') returns.
+        ret_log : bool
+            If True, assumes the input returns are log returns.
+    
+        Returns
+        -------
+        float
+            Annualized return.
+        """
+    
+        # Input check: NaN values
+        if series.isnull().any():
+            raise ValueError("Series contains NaN values. Please clean the data before passing it.")
+        
+        # Input check: type
+        if not isinstance(series, pd.Series):
+            raise FinancialAssetError.IncorrectInputType(input_type=type(series), required_type=pd.core.series.Series)
 
+        # Input check: dtype
+        if not series.map(type).eq(float).all():
+            raise FinancialAssetError.IncorrectInputType(input_dtype=series.dtype, required_dtype=float, d_type=True)
+        
+        # Input check: length of the serie must be >= 2
+        if not len(series)>=2:
+            raise FinancialAssetError.NotEnoughData(required_nb_data_point=2)
+        
+        # Input check: series.iloc[0] must be different from 0
+        if series.iloc[0]==0:
+            raise ZeroDivisionError
+        
+        # Input check: freq must be a string
+        if not isinstance(freq, str):
+            raise FinancialAssetError.IncorrectInputType(input_type=type(freq), required_type=str)
+            
+        # Input check: freq must be either 'd', 'w', 'm', or 'y'
+        if freq not in ['d', 'w', 'm', 'y']:
+            raise ValueError("freq must be either 'd', 'w', 'm', or 'y'")
+        
+        # Input check: prc_or_ret type
+        if not isinstance(prc_or_ret, str):
+            raise FinancialAssetError.IncorrectInputType(input_type=type(prc_or_ret), required_type=str)
+        
+        # Input check: prc_or_ret
+        if prc_or_ret not in ['prc', 'ret']:
+            raise ValueError("prc_or_ret must be either 'prc' or 'ret'")
+        
+        freq_map = {'d': 252, 'w': 52, 'm': 12, 'y': 1}
+        freq_int = freq_map.get(freq)
+        
+        # Prc or ret
+        if prc_or_ret == 'prc':
+            size = len(series) - 1
+            if geo_or_arith == 'geo':
+                annualized_ret = ( series.iloc[size]/series.iloc[0] )**(freq_int/size) - 1
+            elif geo_or_arith == 'arith':
+                annualized_ret = ( series.iloc[size]/series.iloc[0] - 1 )*(freq_int/size)
+
+        elif prc_or_ret == 'ret':
+            size = len(series)
+            if ret_log == False:
+                annualized_ret = ( np.cumprod(1+series)[size-1] )**(freq_int/size) - 1
+            elif ret_log == True:
+                mean_log_ret = np.mean(series)
+                annualized_ret = np.exp(mean_log_ret * freq_int) - 1
+        
+        
+        return annualized_ret
+    
+@staticmethod
+def calculate_volatility():
+    
+    return
 
 class FactorAnalysis(DataChecks):
     """
